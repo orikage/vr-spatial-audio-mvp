@@ -44,15 +44,20 @@
 ゾーン境界は会場の背景騒音レベル（`ambientNoiseSPL`）から導出する。
 
 ```javascript
-// ソース別に SPL_ref を設定可能（デフォルト: 会話 65dB、叫び 85dB）
-const SPL_ref_default = 65; // 会話音声の平均 [dB]
-const SPL_ref_shout   = 85; // 叫び声相当 [dB]
-
-// 音源ごとに dynamicSPL を決定（UI で選択可能）
-const SPL_ref = sourceType === 'shout' ? SPL_ref_shout : SPL_ref_default;
+// SPL_ref: 音源の基準距離1mでの仮想音圧レベル [dB]。
+// 物理的な会話音声（65dB）ではなく、VRシステムの「ゲイン較正値」として扱う。
+// 応援上映・ライブ体験の設計値（d_near=3.2m@75dB環境）に合わせて 100dB に設定。
+//
+//   ambientNoiseSPL=75dB → d_near = 10^((100-75-15)/20) = 10^0.5 ≈ 3.16m ≈ 3.2m ✓
+//   ambientNoiseSPL=85dB → d_near = 10^((100-85-15)/20) = 10^0   = 1.0m ✓
+//   ambientNoiseSPL=55dB → d_near = 10^((100-55-15)/20) = 10^1.5 ≈ 31.6m ≈ 32m ✓
+//
+// 会話（quieter=true）は SPL_ref を -20dB 下げ、ゾーンを 1/10 に縮小できる。
+const SPL_ref = (sourceType === 'quiet') ? 80 : 100;
 
 const d_near  = Math.pow(10, (SPL_ref - ambientNoiseSPL - 15) / 20); // SNR=15dB
 const d_trans = Math.pow(10, (SPL_ref - ambientNoiseSPL - 5)  / 20); // SNR=5dB
+// 比率固定: d_trans / d_near = 10^((15-5)/20) = 10^0.5 = √10 ≈ 3.16（ambientNoiseSPLによらず不変）
 ```
 
 **応援上映（ambientNoiseSPL=75dB）の場合：**
@@ -71,18 +76,25 @@ const d_trans = Math.pow(10, (SPL_ref - ambientNoiseSPL - 5)  / 20); // SNR=5dB
 
 ```javascript
 // 遠方の「こもり感」を演出する経験的モデル（ISO 9613-1は数百m以上スケールのため強調した値を使用）
-f_cutoff(d) = 30000 / Math.pow(d, 2/3)  // [Hz]
+// 上限: BiquadFilterNode は Nyquist 周波数（sampleRate/2≈24000Hz）超で動作未定義 → 20000Hz でクランプ
+// 下限: 300Hz 以下は知覚的に不自然なくぐもり音になる → 300Hz でクランプ
+function fCutoff(d) {
+  const raw = 30000 / Math.pow(Math.max(d, 0.1), 2/3);
+  return Math.min(Math.max(raw, 300), 20000);
+}
 
 // ゾーン境界でのcutoff（ambientNoiseSPL=75dBの場合）
-f_near  = f_cutoff(d_near)   // 例：〜13800Hz（d_near=3.2mのとき）
-f_trans = f_cutoff(d_trans)  // 例：〜6500Hz （d_trans=10mのとき）
+const f_near  = fCutoff(d_near);   // 例：〜13800Hz（d_near=3.2mのとき）
+const f_trans = fCutoff(d_trans);  // 例：〜6500Hz （d_trans=10mのとき）
 ```
 
 ### transitionゾーンの補間（完全クロスフェード）
 
 ```javascript
-const t   = (d - d_near) / (d_trans - d_near); // 0.0〜1.0
-const t_s = 3*t*t - 2*t*t*t;                   // smoothstep
+// clamp必須: nearゾーン(d<d_near)でt<0、ambientゾーン(d>d_trans)でt>1になるため
+// 範囲外のt_sが負や1超になると gainが物理的に意味のない値（負・1超）になる
+const t   = Math.max(0, Math.min(1, (d - d_near) / (d_trans - d_near)));
+const t_s = 3*t*t - 2*t*t*t;                   // smoothstep（clamp後なので 0≤t_s≤1 が保証される）
 
 const gain_physical = 1 / d;  // 逆距離則（全ゾーン共通の基準）
 
@@ -211,7 +223,8 @@ highShelf.gain.value      = 2;     // [dB]
 const virtualGains = [];
 const oscillators  = [];
 const baseFrequencies = [0.35, 0.48, 0.62, 0.78, 0.94, 1.11, 1.29, 1.47]; // Hz
-const phaseOffsets = [0, 45, 90, 135, 180, 225, 270, 315].map(deg => deg * Math.PI / 180);
+// 注: OscillatorNode は Web Audio API で初期位相を設定するAPIがないため、
+//     位相のばらつきは周波数の違いによって時間とともに自然に生まれる。
 
 for (let i = 0; i < 8; i++) {
   const osc = ctx.createOscillator();
@@ -219,11 +232,21 @@ for (let i = 0; i < 8; i++) {
   osc.start();
   oscillators.push(osc);
 
-  // OscillatorNode の出力を GainNode のゆらぎ制御用に接続
-  // gain = (base * (1 + osc * 0.3)) の形式で modulateGain を実装
+  const base     = 1 / Math.sqrt(8); // ≈ 0.354（8チャンネル分配でエネルギー保存）
+  const modDepth = base * 0.3;       // ±30%のゆらぎ幅（base > modDepth なのでgainは常に正）
+
+  // OscillatorNode（出力: -1〜+1）→ modScaler でゆらぎ幅にスケール → AudioParam に加算
+  // gain(t) = base + osc(t) × modDepth  （範囲: 0.248〜0.460）
+  // ※ osc.connect(virtualGain) は音声信号の接続になるため誤り。
+  //    AudioParam をモジュレートするには .gain（AudioParam）に接続する必要がある。
+  const modScaler = ctx.createGain();
+  modScaler.gain.value = modDepth;
+  osc.connect(modScaler);
+
   const virtualGain = ctx.createGain();
-  virtualGain.gain.value = (1 / Math.sqrt(8)) * 1.0; // base level
-  osc.connect(virtualGain); // オシレータ出力でgainを変調
+  virtualGain.gain.value = base;        // 初期値（定数項）
+  modScaler.connect(virtualGain.gain);  // AudioParam に接続してゆらぎを加算
+
   virtualGains.push(virtualGain);
 }
 
@@ -257,7 +280,19 @@ source.start(0, Math.random() * audioBuffer.duration);
 // 11. ソフトキャップ（音質の段差解消）：
 //     near優先度 6-8位 の音源に対し、nearGainとindivAmbGainを 0.5 固定で割り振ることで
 //     「クリア」から「アンビエント」への遷移に中間状態を設け、UX上の段差を解消する。
-if (rank >= 6 && rank <= 8) {
+//
+//     g_phys = 1/d（逆距離則。全ゾーン共通の物理減衰基準値）
+//     ランク付け：nearゾーン内の音源を距離の昇順でソートし、1〜5位がnearパス100%。
+//     チャタリング対策：setTargetAtTime(tau=0.05)でゆっくり移行するため、
+//     1フレームでランクが戻っても知覚的な変化は出にくい。
+const g_phys = 1 / source.distance;  // source: 音源オブジェクト（BufferSourceNodeではなく位置情報を持つオブジェクト）
+
+// ソフトキャップ範囲は maxNearVoices に対する相対値で定義する（ハードコードしない）
+// 例: maxNearVoices=5 → softCapStart=6, softCapEnd=8
+// 例: maxNearVoices=3 → softCapStart=4, softCapEnd=6
+const softCapStart = maxNearVoices + 1;
+const softCapEnd   = maxNearVoices + 3;
+if (rank >= softCapStart && rank <= softCapEnd) {
   nearGain.gain.setTargetAtTime(g_phys * 0.5, ctx.currentTime, 0.05);
   indivAmbGain.gain.setTargetAtTime(g_phys * 0.5, ctx.currentTime, 0.05);
 }
@@ -272,14 +307,16 @@ if (rank >= 6 && rank <= 8) {
 - ローパス適用でこもり感が出ているか
 - 複数音源が混在しても近傍ボイスが埋もれないか
 - 遠方アンビエントが群衆感として聞こえるか
-- **transitionゾーン通過時の境界での+6dB音圧ジャンプがないか**
-  （完全クロスフェード設計で直達合計 G_clear + G_trans = 1/d で安定）
+- **transitionゾーン内部での音圧ジャンプがないか**
+  （G_clear + G_trans = 1/d が常に成立していることを確認）
+- **d_trans 境界（transitionゾーン→ambient）での音量低下がないか**
+  （既知の設計上の問題：transGain が 1/d → 0 に落ちるため -3〜-6dB 低下が生じる可能性あり。単一音源で顕著。実聴で確認し、許容できなければ transGain をambientゾーンにも少しフェードアウト延長する）
 - **N_eff 計算が動的に更新されているか**
   （各フレーム Σ(t_s_i²) を再計算し、人数変動が滑らかに反映されるか）
 - **仮想8音源のゆらぎが非同期になっているか**
   （各Oscillatorが異なる周波数で動作し、脈動が聞こえないか）
-- **叫び声相当のwav（高SPL）を使う場合は対応**：SPL_ref を sourceType で動的に設定。
-  会話（65dB）と叫び（85dB）で異なるゾーン境界が得られることを確認。
+- **SPL_ref の動作確認**：sourceType='quiet'（SPL_ref=80dB）と通常（100dB）で異なるゾーン境界が
+  得られることを確認。quiet時は d_near が通常の 1/10 になる（75dB環境: 3.2m → 0.32m）。
 - **300人規模テスト予定時**：沈んだ音源（t_s < 0.01）の自動mute実装により CPU コスト削減
 - **ソフトキャップによる音質段差の解消**：Near上限付近で音源が入れ替わっても、音質が急変しないか
 - **リスナーの向きの滑らかさ**：角度変化時にプツプツというノイズや定位の飛びがないか
