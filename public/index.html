@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VR空間音声 MVP</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+h1 { font-size: 1.4em; margin-bottom: 8px; color: #a0d2db; }
+.subtitle { font-size: 0.85em; color: #888; margin-bottom: 12px; }
+
+.main-layout {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+canvas {
+  border: 2px solid #333;
+  border-radius: 8px;
+  cursor: crosshair;
+  background: #0f0f23;
+}
+
+.controls {
+  background: #16213e;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 280px;
+  max-width: 320px;
+}
+.controls h2 { font-size: 1.1em; margin-bottom: 12px; color: #a0d2db; }
+
+.control-group {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #2a2a4a;
+}
+.control-group:last-child { border-bottom: none; }
+.control-group label {
+  display: block;
+  font-size: 0.85em;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+.control-group .value {
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #e0e0e0;
+}
+
+input[type="range"] {
+  width: 100%;
+  margin: 4px 0;
+  accent-color: #a0d2db;
+}
+select, button {
+  background: #1a1a3e;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+button:hover { background: #2a2a5e; }
+button.primary {
+  background: #a0d2db;
+  color: #1a1a2e;
+  font-weight: bold;
+  width: 100%;
+  padding: 10px;
+  font-size: 1em;
+}
+button.primary:hover { background: #80b2bb; }
+
+.btn-row { display: flex; gap: 8px; margin-top: 6px; }
+.btn-row button { flex: 1; }
+
+.stats {
+  background: #0f0f23;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: 'Consolas', monospace;
+  font-size: 0.8em;
+  line-height: 1.6;
+}
+.stats .zone-near { color: #4ecdc4; }
+.stats .zone-trans { color: #ffe66d; }
+.stats .zone-amb { color: #ff6b6b; }
+.stats .label { color: #888; }
+
+.source-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 0.82em;
+}
+.source-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#startOverlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  cursor: pointer;
+}
+#startOverlay h2 { font-size: 2em; margin-bottom: 16px; color: #a0d2db; }
+#startOverlay p { color: #aaa; font-size: 1.1em; }
+#startOverlay.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="startOverlay">
+  <h2>VR空間音声 MVP</h2>
+  <p>クリックして開始（音声再生にはユーザー操作が必要です）</p>
+</div>
+
+<h1>VR空間音声 MVP</h1>
+<p class="subtitle">音源ポインタをドラッグして距離による音の変化を確認</p>
+
+<div class="main-layout">
+  <canvas id="canvas" width="800" height="600"></canvas>
+
+  <div class="controls">
+    <h2>設定</h2>
+
+    <div class="control-group">
+      <label>会場騒音レベル (ambientNoiseSPL)</label>
+      <input type="range" id="splSlider" min="55" max="85" value="75" step="1">
+      <span class="value"><span id="splValue">75</span> dB</span>
+    </div>
+
+    <div class="control-group">
+      <label>近傍同時再生上限 (maxNearVoices)</label>
+      <select id="maxNearSelect">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5" selected>5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>音源数</label>
+      <div class="btn-row">
+        <button id="removeSource">- 削除</button>
+        <button id="addSource">+ 追加</button>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <button class="primary" id="playPause">⏸ 一時停止</button>
+    </div>
+
+    <div class="control-group">
+      <label>ゾーン境界</label>
+      <div class="stats">
+        <span class="label">d_near:</span> <span class="zone-near" id="statNear">3.2</span>m<br>
+        <span class="label">d_trans:</span> <span class="zone-trans" id="statTrans">10.0</span>m<br>
+        <span class="label">N_eff:</span> <span id="statNeff">0.00</span><br>
+        <span class="label">AmbGain:</span> <span id="statAmbGain">0.00</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>音源一覧</label>
+      <div class="source-list" id="sourceList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// 定数・設定
+// ============================================================
+const CANVAS_W = 800;
+const CANVAS_H = 600;
+const PIXELS_PER_METER = 20;  // 1m = 20px → 40m×30m空間
+const SPL_REF = 100;  // 応援上映・ライブの仮想ゲイン基準
+
+// 音源の色パレット
+const SOURCE_COLORS = ['#4ecdc4', '#ffe66d', '#ff6b6b', '#c084fc', '#fb923c'];
+// 音源ごとの周波数（識別しやすくする）
+const SOURCE_FREQS = [220, 330, 440, 554, 659];
+
+// 仮想8音源のLFO周波数（ドメインロジック.md準拠）
+const VIRTUAL_LFO_FREQS = [0.35, 0.48, 0.62, 0.78, 0.94, 1.11, 1.29, 1.47];
+
+// ============================================================
+// 状態
+// ============================================================
+let ctx = null;  // AudioContext
+let masterGain = null;
+let ambientBusGain = null;  // AmbientBus入口
+let ambGainNode = null;     // AmbGain（N_eff正規化）
+let virtualGains = [];      // 仮想8音源のGainNode
+let virtualPanners = [];    // 仮想8音源のPannerNode
+
+let sources = [];  // 音源オブジェクト配列
+let ambientNoiseSPL = 75;
+let maxNearVoices = 5;
+let dNear = 0;
+let dTrans = 0;
+let isPlaying = true;
+let draggingSource = null;
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function smoothstep(t) { return 3 * t * t - 2 * t * t * t; }
+function fCutoff(d) {
+  const raw = 30000 / Math.pow(Math.max(d, 0.1), 2 / 3);
+  return clamp(raw, 300, 20000);
+}
+
+function canvasToMeters(px, py) {
+  return [(px - CANVAS_W / 2) / PIXELS_PER_METER, (py - CANVAS_H / 2) / PIXELS_PER_METER];
+}
+function metersToCanvas(mx, my) {
+  return [mx * PIXELS_PER_METER + CANVAS_W / 2, my * PIXELS_PER_METER + CANVAS_H / 2];
+}
+
+function updateZoneBoundaries() {
+  dNear = Math.pow(10, (SPL_REF - ambientNoiseSPL - 15) / 20);
+  dTrans = Math.pow(10, (SPL_REF - ambientNoiseSPL - 5) / 20);
+  document.getElementById('statNear').textContent = dNear.toFixed(1);
+  document.getElementById('statTrans').textContent = dTrans.toFixed(1);
+}
+
+// ============================================================
+// オーディオグラフ構築
+// ============================================================
+function initAudio() {
+  ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
+  masterGain = ctx.createGain();
+  masterGain.gain.value = 0.8;
+  masterGain.connect(ctx.destination);
+
+  // AmbientBus → AmbGain → 仮想8音源
+  ambientBusGain = ctx.createGain();
+  ambientBusGain.gain.value = 1;
+
+  ambGainNode = ctx.createGain();
+  ambGainNode.gain.value = 0;
+  ambientBusGain.connect(ambGainNode);
+
+  // 仮想8音源（0°〜315°、45°刻み）
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * 45) * Math.PI / 180;
+    const radius = 2;  // 仮想音源の配置半径(m)
+
+    // LFOによるゲインゆらぎ
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = VIRTUAL_LFO_FREQS[i];
+    lfo.start();
+
+    const base = 1 / Math.sqrt(8);  // ≈ 0.354
+    const modDepth = base * 0.3;     // ±30%
+
+    const modScaler = ctx.createGain();
+    modScaler.gain.value = modDepth;
+    lfo.connect(modScaler);
+
+    const vGain = ctx.createGain();
+    vGain.gain.value = base;
+    modScaler.connect(vGain.gain);  // AudioParamにLFO加算
+
+    ambGainNode.connect(vGain);
+
+    // 仮想パンナー（equalpower）
+    const vPanner = ctx.createPanner();
+    vPanner.panningModel = 'equalpower';
+    vPanner.distanceModel = 'inverse';
+    vPanner.rolloffFactor = 0;
+    vPanner.positionX.value = Math.sin(angle) * radius;
+    vPanner.positionY.value = 0;
+    vPanner.positionZ.value = -Math.cos(angle) * radius;
+
+    vGain.connect(vPanner);
+    vPanner.connect(masterGain);
+
+    virtualGains.push(vGain);
+    virtualPanners.push(vPanner);
+  }
+}
+
+// ============================================================
+// 音源の作成・削除
+// ============================================================
+function createSource(index) {
+  const freq = SOURCE_FREQS[index % SOURCE_FREQS.length];
+  const color = SOURCE_COLORS[index % SOURCE_COLORS.length];
+
+  // 位置：ランダムに配置（リスナーから5〜15m）
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 5 + Math.random() * 10;
+  const mx = Math.cos(angle) * dist;
+  const my = Math.sin(angle) * dist;
+
+  // 音源ノード（OscillatorNode）
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.value = freq;
+
+  // nearパス: [HighShelf +2dB] → [HRTF Panner] → [NearGain] → Master
+  const highShelf = ctx.createBiquadFilter();
+  highShelf.type = 'highshelf';
+  highShelf.frequency.value = 3000;
+  highShelf.gain.value = 2;
+
+  const nearPanner = ctx.createPanner();
+  nearPanner.panningModel = 'HRTF';
+  nearPanner.distanceModel = 'inverse';
+  nearPanner.rolloffFactor = 0;
+  nearPanner.maxDistance = 10000;
+
+  const nearGain = ctx.createGain();
+  nearGain.gain.value = 0;
+
+  osc.connect(highShelf);
+  highShelf.connect(nearPanner);
+  nearPanner.connect(nearGain);
+  nearGain.connect(masterGain);
+
+  // transパス: [LowPass] → [EqualPower Panner] → [TransGain] → Master
+  const lowPass = ctx.createBiquadFilter();
+  lowPass.type = 'lowpass';
+  lowPass.frequency.value = 20000;
+
+  const transPanner = ctx.createPanner();
+  transPanner.panningModel = 'equalpower';
+  transPanner.distanceModel = 'inverse';
+  transPanner.rolloffFactor = 0;
+  transPanner.maxDistance = 10000;
+
+  const transGain = ctx.createGain();
+  transGain.gain.value = 0;
+
+  osc.connect(lowPass);
+  lowPass.connect(transPanner);
+  transPanner.connect(transGain);
+  transGain.connect(masterGain);
+
+  // ambientパス: [IndivAmbGain] → AmbientBus
+  const indivAmbGain = ctx.createGain();
+  indivAmbGain.gain.value = 0;
+
+  osc.connect(indivAmbGain);
+  indivAmbGain.connect(ambientBusGain);
+
+  osc.start();
+
+  return {
+    index,
+    color,
+    freq,
+    mx, my,           // メートル座標
+    osc,
+    highShelf,
+    nearPanner,
+    nearGain,
+    lowPass,
+    transPanner,
+    transGain,
+    indivAmbGain,
+    distance: 0,
+    zone: 'ambient',
+    rank: 0,
+    tS: 0,
+    currentNearGain: 0,
+    currentTransGain: 0,
+    currentAmbGain: 0,
+    currentCutoff: 20000,
+  };
+}
+
+function destroySource(source) {
+  source.osc.stop();
+  source.osc.disconnect();
+  source.highShelf.disconnect();
+  source.nearPanner.disconnect();
+  source.nearGain.disconnect();
+  source.lowPass.disconnect();
+  source.transPanner.disconnect();
+  source.transGain.disconnect();
+  source.indivAmbGain.disconnect();
+}
+
+// ============================================================
+// 音響パラメータの毎フレーム更新
+// ============================================================
+function updateAudio() {
+  if (!ctx || !isPlaying) return;
+  const now = ctx.currentTime;
+
+  const fNear = fCutoff(dNear);
+  const fTrans = fCutoff(dTrans);
+
+  // 距離計算 & ソート
+  for (const s of sources) {
+    s.distance = Math.sqrt(s.mx * s.mx + s.my * s.my);
+    if (s.distance < 0.01) s.distance = 0.01; // ゼロ割対策
+  }
+
+  // nearゾーン内の音源を距離順ソートしてランク付け
+  const nearSources = sources.filter(s => s.distance < dTrans);
+  nearSources.sort((a, b) => a.distance - b.distance);
+  for (const s of sources) s.rank = 0;
+  nearSources.forEach((s, i) => s.rank = i + 1);
+
+  // 各音源のゲイン・フィルタ更新
+  let nEff = 0;
+
+  for (const s of sources) {
+    const d = s.distance;
+    const gainPhysical = 1 / d;
+
+    // smoothstep補間
+    const t = clamp((d - dNear) / (dTrans - dNear), 0, 1);
+    const tS = smoothstep(t);
+    s.tS = tS;
+
+    // cutoff（対数補間）
+    const cutoff = (tS === 0) ? 20000 :
+                   (tS === 1) ? fCutoff(d) :
+                   Math.exp(Math.log(fNear) * (1 - tS) + Math.log(fTrans) * tS);
+
+    // 基本ゲイン
+    let gNear = gainPhysical * (1 - tS);
+    let gTrans = gainPhysical * tS;
+    let gAmb = gainPhysical * tS;
+
+    // ソフトキャップ（ランクベース）
+    const softCapStart = maxNearVoices + 1;
+    const softCapEnd = maxNearVoices + 3;
+
+    if (s.rank > 0 && s.rank <= maxNearVoices) {
+      // near 100%: そのまま
+    } else if (s.rank >= softCapStart && s.rank <= softCapEnd) {
+      // 50:50ブレンド
+      gNear = gainPhysical * 0.5;
+      gAmb = gainPhysical * 0.5;
+      gTrans = 0;
+    } else if (s.rank > softCapEnd || s.rank === 0) {
+      // ambient 100%（nearゾーン外 or ソフトキャップ外）
+      if (d < dNear) {
+        // nearゾーン内だけどランク外
+        gNear = 0;
+        gTrans = 0;
+        gAmb = gainPhysical;
+      }
+    }
+
+    // ゾーン判定（表示用）
+    s.zone = (d <= dNear) ? 'near' : (d <= dTrans) ? 'transition' : 'ambient';
+
+    // N_eff寄与
+    nEff += tS * tS;
+
+    // パンナー位置更新（Canvas座標→Web Audio座標）
+    const posX = s.mx;
+    const posZ = -s.my;  // Y軸反転
+    s.nearPanner.positionX.setValueAtTime(posX, now);
+    s.nearPanner.positionZ.setValueAtTime(posZ, now);
+    s.transPanner.positionX.setValueAtTime(posX, now);
+    s.transPanner.positionZ.setValueAtTime(posZ, now);
+
+    // ゲイン更新（setTargetAtTimeでチャタリング防止）
+    s.nearGain.gain.setTargetAtTime(gNear, now, 0.05);
+    s.transGain.gain.setTargetAtTime(gTrans, now, 0.05);
+    s.indivAmbGain.gain.setTargetAtTime(gAmb, now, 0.05);
+
+    // LowPassフィルタ更新
+    s.lowPass.frequency.setTargetAtTime(cutoff, now, 0.02);
+
+    // 表示用に保存
+    s.currentNearGain = gNear;
+    s.currentTransGain = gTrans;
+    s.currentAmbGain = gAmb;
+    s.currentCutoff = cutoff;
+  }
+
+  // AmbGain更新（N_eff正規化 + 密度ブースト）
+  const nEffSafe = Math.max(nEff, 0.001);
+  const gainNormalized = 1 / Math.sqrt(nEffSafe);
+  const densityBoostDB = 6 * Math.tanh(nEffSafe / 30);
+  const gainDensity = Math.pow(10, densityBoostDB / 20);
+  const totalAmbGain = (nEff < 0.001) ? 0 : gainNormalized * gainDensity;
+
+  ambGainNode.gain.setTargetAtTime(totalAmbGain, now, 0.05);
+
+  // 統計表示
+  document.getElementById('statNeff').textContent = nEff.toFixed(2);
+  document.getElementById('statAmbGain').textContent = totalAmbGain.toFixed(3);
+}
+
+// ============================================================
+// Canvas描画
+// ============================================================
+const canvas = document.getElementById('canvas');
+const cctx = canvas.getContext('2d');
+
+function draw() {
+  cctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // グリッド
+  cctx.strokeStyle = '#1a1a3e';
+  cctx.lineWidth = 0.5;
+  for (let x = 0; x < CANVAS_W; x += PIXELS_PER_METER * 5) {
+    cctx.beginPath(); cctx.moveTo(x, 0); cctx.lineTo(x, CANVAS_H); cctx.stroke();
+  }
+  for (let y = 0; y < CANVAS_H; y += PIXELS_PER_METER * 5) {
+    cctx.beginPath(); cctx.moveTo(0, y); cctx.lineTo(CANVAS_W, y); cctx.stroke();
+  }
+
+  const cx = CANVAS_W / 2;
+  const cy = CANVAS_H / 2;
+
+  // ゾーン境界円
+  // d_trans（赤）
+  cctx.beginPath();
+  cctx.arc(cx, cy, dTrans * PIXELS_PER_METER, 0, Math.PI * 2);
+  cctx.strokeStyle = 'rgba(255,107,107,0.3)';
+  cctx.lineWidth = 2;
+  cctx.setLineDash([8, 4]);
+  cctx.stroke();
+  cctx.setLineDash([]);
+
+  // d_near（緑）
+  cctx.beginPath();
+  cctx.arc(cx, cy, dNear * PIXELS_PER_METER, 0, Math.PI * 2);
+  cctx.strokeStyle = 'rgba(78,205,196,0.4)';
+  cctx.lineWidth = 2;
+  cctx.stroke();
+
+  // ゾーンラベル
+  cctx.font = '11px sans-serif';
+  cctx.fillStyle = 'rgba(78,205,196,0.6)';
+  cctx.fillText(`near (${dNear.toFixed(1)}m)`, cx + dNear * PIXELS_PER_METER + 4, cy - 4);
+  cctx.fillStyle = 'rgba(255,107,107,0.6)';
+  cctx.fillText(`ambient (${dTrans.toFixed(1)}m)`, cx + dTrans * PIXELS_PER_METER + 4, cy - 4);
+
+  // リスナー（中央）
+  cctx.beginPath();
+  cctx.arc(cx, cy, 8, 0, Math.PI * 2);
+  cctx.fillStyle = '#fff';
+  cctx.fill();
+  cctx.font = '10px sans-serif';
+  cctx.fillStyle = '#aaa';
+  cctx.fillText('Listener', cx + 12, cy + 4);
+
+  // 音源ポインタ
+  for (const s of sources) {
+    const [sx, sy] = metersToCanvas(s.mx, s.my);
+
+    // 距離線
+    cctx.beginPath();
+    cctx.moveTo(cx, cy);
+    cctx.lineTo(sx, sy);
+    cctx.strokeStyle = `${s.color}33`;
+    cctx.lineWidth = 1;
+    cctx.stroke();
+
+    // ポインタ
+    const radius = 10;
+    cctx.beginPath();
+    cctx.arc(sx, sy, radius, 0, Math.PI * 2);
+    cctx.fillStyle = s.color;
+    cctx.fill();
+    cctx.strokeStyle = '#fff';
+    cctx.lineWidth = 1.5;
+    cctx.stroke();
+
+    // ラベル
+    cctx.font = '11px monospace';
+    cctx.fillStyle = '#ddd';
+    const label = `#${s.index + 1} ${s.distance.toFixed(1)}m [${s.zone}]`;
+    cctx.fillText(label, sx + 14, sy - 6);
+
+    // ゲイン表示
+    cctx.font = '9px monospace';
+    cctx.fillStyle = '#999';
+    cctx.fillText(`N:${s.currentNearGain.toFixed(2)} T:${s.currentTransGain.toFixed(2)} A:${s.currentAmbGain.toFixed(2)}`, sx + 14, sy + 8);
+    cctx.fillText(`cut:${Math.round(s.currentCutoff)}Hz`, sx + 14, sy + 20);
+  }
+}
+
+// ============================================================
+// 音源一覧UI更新
+// ============================================================
+function updateSourceList() {
+  const list = document.getElementById('sourceList');
+  list.innerHTML = '';
+  for (const s of sources) {
+    const zoneClass = s.zone === 'near' ? 'zone-near' : s.zone === 'transition' ? 'zone-trans' : 'zone-amb';
+    const el = document.createElement('div');
+    el.className = 'source-item';
+    el.innerHTML = `
+      <span class="source-dot" style="background:${s.color}"></span>
+      <span>#${s.index + 1} (${s.freq}Hz)</span>
+      <span class="${zoneClass}">${s.distance.toFixed(1)}m</span>
+    `;
+    list.appendChild(el);
+  }
+}
+
+// ============================================================
+// メインループ
+// ============================================================
+function mainLoop() {
+  updateAudio();
+  draw();
+  updateSourceList();
+  requestAnimationFrame(mainLoop);
+}
+
+// ============================================================
+// マウスイベント（ドラッグ）
+// ============================================================
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+  const py = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+
+  for (const s of sources) {
+    const [sx, sy] = metersToCanvas(s.mx, s.my);
+    const dx = px - sx;
+    const dy = py - sy;
+    if (dx * dx + dy * dy < 15 * 15) {
+      draggingSource = s;
+      return;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!draggingSource) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (CANVAS_W / rect.width);
+  const py = (e.clientY - rect.top) * (CANVAS_H / rect.height);
+  const [mx, my] = canvasToMeters(px, py);
+  draggingSource.mx = mx;
+  draggingSource.my = my;
+});
+
+canvas.addEventListener('mouseup', () => { draggingSource = null; });
+canvas.addEventListener('mouseleave', () => { draggingSource = null; });
+
+// タッチイベント対応
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+  const px = (touch.clientX - rect.left) * (CANVAS_W / rect.width);
+  const py = (touch.clientY - rect.top) * (CANVAS_H / rect.height);
+
+  for (const s of sources) {
+    const [sx, sy] = metersToCanvas(s.mx, s.my);
+    const dx = px - sx;
+    const dy = py - sy;
+    if (dx * dx + dy * dy < 25 * 25) {
+      draggingSource = s;
+      return;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!draggingSource) return;
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+  const px = (touch.clientX - rect.left) * (CANVAS_W / rect.width);
+  const py = (touch.clientY - rect.top) * (CANVAS_H / rect.height);
+  const [mx, my] = canvasToMeters(px, py);
+  draggingSource.mx = mx;
+  draggingSource.my = my;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { draggingSource = null; });
+
+// ============================================================
+// UIイベント
+// ============================================================
+document.getElementById('splSlider').addEventListener('input', (e) => {
+  ambientNoiseSPL = Number(e.target.value);
+  document.getElementById('splValue').textContent = ambientNoiseSPL;
+  updateZoneBoundaries();
+});
+
+document.getElementById('maxNearSelect').addEventListener('change', (e) => {
+  maxNearVoices = Number(e.target.value);
+});
+
+document.getElementById('addSource').addEventListener('click', () => {
+  if (sources.length >= 5) return;
+  sources.push(createSource(sources.length));
+});
+
+document.getElementById('removeSource').addEventListener('click', () => {
+  if (sources.length <= 2) return;
+  const removed = sources.pop();
+  destroySource(removed);
+});
+
+document.getElementById('playPause').addEventListener('click', () => {
+  if (isPlaying) {
+    ctx.suspend();
+    isPlaying = false;
+    document.getElementById('playPause').textContent = '▶ 再生';
+  } else {
+    ctx.resume();
+    isPlaying = true;
+    document.getElementById('playPause').textContent = '⏸ 一時停止';
+  }
+});
+
+// ============================================================
+// 初期化
+// ============================================================
+document.getElementById('startOverlay').addEventListener('click', () => {
+  document.getElementById('startOverlay').classList.add('hidden');
+  initAudio();
+  updateZoneBoundaries();
+
+  // 初期音源（3個）
+  for (let i = 0; i < 3; i++) {
+    sources.push(createSource(i));
+  }
+
+  mainLoop();
+});
+</script>
+</body>
+</html>
