@@ -1,0 +1,131 @@
+﻿<!doctype html>
+<html lang="ja">
+<head prefix="og: http://ogp.me/ns# fb: http://ogp.me/ns/fb# article: http://ogp.me/ns/article#">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:type" content="website">
+<meta property="og:title" content="効果音ラボ - フリー、商用無料、報告不用の効果音素材をダウンロード">
+<meta property="og:description" content="フリー素材ながら質を追求した、数百種の無料効果音をダウンロードできます。">
+<meta property="og:url" content="https://soundeffect-lab.info/">
+<meta property="og:site_name" content="効果音ラボ">
+<meta property="og:image" content="https://soundeffect-lab.info/img/og-image.jpg">
+<title>404 not found｜効果音ラボ</title>
+<meta name="description" content="誰でも今すぐダウンロードできる効果音配布サイト。フリーでありながら質を追求した効果音を200種類以上公開。">
+<link rel="stylesheet" href="/base.css?s=a">
+<link rel="stylesheet" href="/other.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-4DT8B53Q3K"></script>
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-4DT8B53Q3K');
+</script>
+</head>
+<body>
+<div id="container">
+<header>
+<p id="logo"><a href="/"><img src="/img/p-logo.gif" alt="効果音ラボ" width="137" height="27"></a></p>
+<p id="headerinfo">フリー、商用利用無料、クレジット表記・リンク不要の効果音・SE素材をダウンロード</p>
+<nav>
+<ul><!--
+--><li><a id="battle" href="/sound/battle/">戦闘</a></li><!--
+--><li><a id="anime" href="/sound/anime/">演出・アニメ</a></li><!--
+--><li><a id="voice" href="/sound/voice/game.html">声素材</a></li><!---
+--><li><a id="various" href="/sound/various/">生活</a></li><!--
+--><li><a id="machine" href="/sound/machine/">機械・乗り物</a></li><!--
+--><li><a id="environment" href="/sound/environment/">環境音</a></li><!--
+--><li><a id="button" href="/sound/button/">ボタン・システム音</a></li><!--
+--><li><a id="animal" href="/sound/animal/">自然・動物</a></li><!--
+--></ul>
+<form id="serachform" method="get" action="/sound/search.php" autocomplete="off">
+<input type="text" id="searchtext" name="s"><button id="searchsubmit"><img src="/img/searchsubmit.png" alt="検索"></button>
+</form>
+</nav>
+</header>
+
+<div id="wrap">
+<main role="main">
+<h1>お探しのページが見つかりませんでした（404 not found）。</h1>
+<p>このページは、当サイト内の存在しないページにアクセスした際に自動で表示されるエラーページです。削除されたページにアクセスした場合にも表示されます。</p>
+<dl>
+	<dt>ブラウザのアドレスバーにURLを入力したら表示された</dt>
+	<dd>間違ったURLを入力している可能性があります。</dd>
+		<dt>別のサイトからこのサイトに来たら表示された</dt>
+	<dd>元サイトのリンクURLが間違っているか、削除されたページにリンクされている可能性があります。</dd>
+		<dt>効果音ラボのサイト内リンクを押したら表示された</dt>
+	<dd>効果音ラボ自体の不具合です。よろしければページ下部のお問い合わせフォームよりご連絡いただけますと幸いです。</dd>
+</dl>
+<style>
+	main dt {
+		margin-bottom: 8px;
+		font-weight: bold;
+	}
+	main dd {
+		margin-bottom: 30px;		
+		margin-left: 10px;
+	}
+	main dd:before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: url(/img/icon-arrow.png) no-repeat;
+    background-size: 10px;
+    margin-right: 5px;
+}
+</style>
+</main>
+
+<div id="rs">
+<ul id="submenu1">
+<li><a href="/agreement/">利用規約</a></li></ul>
+<p id="nav-pon-info">生配信で効果音を出せるWebアプリ</p><div id="nav-pon"><p>効果音ポン出し</p>
+<ul>
+<li><a href="/pon/">ポン出しについて</a></li><!--
+--><li><a href="/pon/app.html">ポン出し画面</a></li>
+</ul>
+</div>
+<dl>
+<dt>効果音サブカテゴリー</dt>
+<dd><a href="/sound/sub-category/business.html">ビジネス・プレゼン</a></dd>
+<dd><a href="/sound/sub-category/summer.html">夏らしい音</a></dd>
+</dl>
+<p id="ra"><a href="/random/">ランダム効果音</a></p><ul id="submenu2">
+<li><a href="/about/">サイト概要</a></li><!--
+--><li><a href="/profile/">制作者プロフィール</a></li><!--
+--><li><a href="/blog/">作成日記</a></li><!--
+--><li><a href="/faq/">FAQ</a></li><!--
+--><li><a href="/example/">素材利用事例</a></li><!--
+--><li><a href="/copyright/">効果音の著作権</a></li><!--
+--><li><a href="/privacy/">プライバシーポリシー</a></li><!--
+--><li><a href="/link/">リンク</a></li>
+</ul>
+<dl>
+<dt>効果音使いこなし</dt>
+<dd><a href="/lecture/sefree/">おすすめ音声編集アプリ</a></dd>
+<dd><a href="/lecture/sefree/volume/">音量調整</a></dd>
+<dd><a href="/lecture/sefree/cut/">不要部分カット</a></dd>
+<dd><a href="/lecture/sefree/loop/">ループのさせかた</a></dd>
+</dl>
+<dl class="category">
+<dt>効果音の作り方</dt>
+<dd><a href="/lecture/equipment/">制作機材</a></dd>
+<dd><a href="/lecture/recording/">録音する</a></dd>
+<dd><a href="/lecture/se1/">チャンバラ音編</a></dd>
+<dd><a href="/lecture/se2/">時代劇のカア～ッ音編</a></dd>
+</dl>
+</div>
+</div>
+
+<footer>
+<ul>
+<li><a href="/disclaimer/">免責事項</a></li>
+<li><a href="/privacy/">プライバシーポリシー</a></li>
+<li><a href="/contact/">お問い合わせ</a></li>
+</ul>
+<p id="copyright">&copy; 2013-2023 効果音ラボ All Rights Reserved.</p>
+</footer>
+</div>
+</body>
+</html>
